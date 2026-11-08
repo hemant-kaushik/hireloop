@@ -39,7 +39,7 @@ Scroll feed → Extension captures → Server filters → Summary + draft → Yo
 │   approve / edit / reject           │   │        ▼                                                     │   │                       │
 │                                     │   │  Sender queue (throttled, daily cap) ────────────────────────┼──►│  Gmail SMTP ──► HR    │
 └─────────────────────────────────────┘   │                                                              │   └───────────────────────┘
-                                          │  SQLite (data/outreach.db): posts · jobs · drafts ·          │
+                                          │  SQLite (data/hireloop.db): posts · jobs · drafts ·          │
                                           │                             contacts · events                │
                                           │  profile/: profile.md · preferences.yaml · resume.pdf        │
                                           └──────────────────────────────────────────────────────────────┘
@@ -89,7 +89,7 @@ That's about 23 LLM calls per session, well within free quotas. Matching posts w
 | **LLM gateway** | `generateJSON(prompt, schema)`: Gemini → Groq → Ollama fallback, token-bucket rate limiter, one retry on invalid JSON. | Providers are interchangeable, so a quota cut never stops the job search. |
 | **Review UI** (React) | Cards: original post + link, summary, match reasons, editable subject/body. Approve / Reject / Regenerate. Tabs: Apply manually, Sent, Rejected. | Where you spend your time. Ten cards should take about 5 minutes. |
 | **Sender queue** | Nodemailer + Gmail SMTP, resume attached, 60–120 s gap with jitter, daily cap of about 25, skips contacts emailed in the last 30 days. Stores message ID / error. | Bursts of near-identical emails land in spam or get your Gmail flagged. |
-| **SQLite + event log** | `data/outreach.db`. Every decision is logged in `events`. | When a good post gets dropped, you can see which stage dropped it. |
+| **SQLite + event log** | `data/hireloop.db`. Every decision is logged in `events`. | When a good post gets dropped, you can see which stage dropped it. |
 | **Profile files** | `profile.md`, `preferences.yaml`, `resume.pdf`. | LLMs read Markdown better than a PDF dump, and you can edit it in seconds. |
 
 ---
@@ -137,7 +137,7 @@ hireloop/
 │   ├── selectors.js · content.js · background.js
 │   └── popup.html · popup.js
 ├── profile/                 ← YOUR data (real files gitignored, *.example committed)
-└── data/                    ← outreach.db (gitignored)
+└── data/                    ← hireloop.db (gitignored)
 ```
 
 ---

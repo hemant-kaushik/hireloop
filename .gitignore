@@ -12,3 +12,4 @@ data/
 # personal profile files (templates *.example.* are committed)
 profile/*
 !profile/*.example.*
+!profile/README.md

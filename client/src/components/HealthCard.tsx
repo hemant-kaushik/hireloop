@@ -1,12 +1,4 @@
-import { useEffect, useState } from "react";
-import { api, type Health } from "../lib/api";
-
-const POLL_MS = 5000;
-
-type State =
-  | { kind: "loading" }
-  | { kind: "online"; health: Health; checkedAt: number }
-  | { kind: "offline"; error: string; checkedAt: number };
+import type { HealthState } from "../lib/useHealth";
 
 function formatUptime(sec: number): string {
   if (sec < 60) return `${sec}s`;
@@ -14,28 +6,7 @@ function formatUptime(sec: number): string {
   return `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`;
 }
 
-export function HealthCard() {
-  const [state, setState] = useState<State>({ kind: "loading" });
-
-  useEffect(() => {
-    let cancelled = false;
-    const check = async () => {
-      try {
-        const health = await api.health();
-        if (!cancelled) setState({ kind: "online", health, checkedAt: Date.now() });
-      } catch (err) {
-        if (!cancelled)
-          setState({ kind: "offline", error: err instanceof Error ? err.message : String(err), checkedAt: Date.now() });
-      }
-    };
-    check();
-    const id = setInterval(check, POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, []);
-
+export function HealthCard({ state }: { state: HealthState }) {
   if (state.kind === "loading") {
     return (
       <section className="card">

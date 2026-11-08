@@ -1,0 +1,27 @@
+# Copy to profile/preferences.yaml and edit.
+# Matching is case-insensitive. Phase 2 uses these rules to filter job posts.
+
+# A post must match at least one of these roles (in its title or text).
+roles: [backend, full stack, sde, node]
+
+# Your total experience in years (decimals are fine).
+my_experience_years: 1.5
+
+# Keep posts whose required experience overlaps this range, in years.
+accept_exp_range: [0, 3]
+
+# Keep posts in any of these places. Include "remote" if you'd take remote roles.
+locations: [bangalore, remote, gurgaon]
+
+# A post must mention at least one of these (leave empty [] to skip this check).
+must_have_any: [node, react, python]
+
+# Drop posts that mention any of these.
+avoid: [unpaid, internship, sales]
+
+# Email sending limits (used in Phase 3).
+send:
+  daily_cap: 25              # max emails per day (1–100)
+  gap_seconds: [60, 120]     # random wait between emails
+  recontact_after_days: 30   # never email the same address again within this many days
+  dry_run: true              # true = every email goes to YOUR address instead of HR

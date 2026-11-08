@@ -2,6 +2,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import { config } from "./config.js";
 import "./db/index.js"; // opens the DB and runs migrations at startup
 import { healthRouter } from "./routes/health.js";
+import { profileRouter } from "./routes/profile.js";
 
 const app = express();
 
@@ -9,6 +10,7 @@ app.disable("x-powered-by");
 app.use(express.json({ limit: "2mb" })); // post batches from the extension
 
 app.use("/api/health", healthRouter);
+app.use("/api/profile", profileRouter);
 
 // Unknown API route → JSON 404 (not Express's HTML page)
 app.use("/api", (req, res) => {

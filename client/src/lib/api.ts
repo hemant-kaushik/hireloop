@@ -1,5 +1,20 @@
 // Typed wrappers around the Express API. All calls go to /api (proxied by Vite).
 
+export type FileState = "ok" | "missing" | "template" | "invalid";
+
+export type FileStatus = {
+  state: FileState;
+  path: string;
+  reason?: string;
+  fix?: string;
+  warnings?: string[];
+};
+
+export type ProfileStatus = {
+  ready: boolean;
+  files: { profile: FileStatus; preferences: FileStatus; resume: FileStatus };
+};
+
 export type Health = {
   ok: boolean;
   app: string;
@@ -7,6 +22,7 @@ export type Health = {
   node: string;
   uptimeSec: number;
   db: { ok: boolean; schemaVersion: number; path: string; error?: string };
+  profile: ProfileStatus;
 };
 
 async function getJSON<T>(path: string): Promise<T> {

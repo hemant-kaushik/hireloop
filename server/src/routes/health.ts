@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { dbHealth } from "../db/index.js";
+import { checkProfile } from "../lib/profile.js";
 
 const startedAt = Date.now();
 
@@ -7,6 +8,7 @@ export const healthRouter = Router();
 
 healthRouter.get("/", (_req, res) => {
   const db = dbHealth();
+  // `ok` covers API + DB only. An unfinished profile is a setup step, not an outage.
   res.status(db.ok ? 200 : 503).json({
     ok: db.ok,
     app: "hireloop",
@@ -14,5 +16,6 @@ healthRouter.get("/", (_req, res) => {
     node: process.version,
     uptimeSec: Math.round((Date.now() - startedAt) / 1000),
     db,
+    profile: checkProfile(),
   });
 });
