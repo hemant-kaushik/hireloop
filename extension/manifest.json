@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "HireLoop Capture",
+  "version": "0.1.0",
+  "description": "Reads the LinkedIn posts on your screen and sends them to your local HireLoop server. Never clicks, scrolls or messages.",
+  "minimum_chrome_version": "116",
+  "permissions": ["storage", "alarms"],
+  "host_permissions": ["http://127.0.0.1:3001/*", "http://localhost:3001/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://www.linkedin.com/*"],
+      "js": ["selectors.js", "parse.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": { "default_popup": "popup.html", "default_title": "HireLoop" }
+}
