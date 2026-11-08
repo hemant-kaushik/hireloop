@@ -77,11 +77,11 @@ That's about 23 LLM calls per session, well within free quotas. Matching posts w
 
 | Component | What it does | Why it exists |
 |---|---|---|
-| **Content script** (`extension/content.js`) | Watches the feed with a `MutationObserver`. Extracts text, author, headline, post URN, permalink, visible emails. Keeps a set of URNs already seen. | LinkedIn loads posts as you scroll. An observer catches each one when it appears, with no polling and no automation. |
-| **Selectors** (`extension/selectors.js`) | All LinkedIn DOM selectors in one file, with backups (attributes, then longest text block, then raw `innerText`). | LinkedIn changes its HTML often. One file to fix, and the backups keep capture working meanwhile. |
+| **Content script** (`extension/content.js` + `parse.js`) | A `MutationObserver` finds posts as they load; an `IntersectionObserver` captures each one once it is actually on screen. `parse.js` extracts key, text, author, headline, time label and job-card link. Re-sends a post if its text grows (you clicked "…more"). Emails are extracted on the server. | LinkedIn loads posts as you scroll. Observers catch each one when it appears, with no polling and no automation. |
+| **Selectors** (`extension/selectors.js`) | All LinkedIn DOM selectors in one file, for both DOM generations (see below), with backups (attributes, then longest text block, then raw `innerText`). | LinkedIn changes its HTML often. One file to fix, and the backups keep capture working meanwhile. |
 | **Background worker** (`extension/background.js`) | Receives batches, POSTs to `localhost:3001/api/ingest`, queues failed batches in storage and retries every minute. Keeps counters. | Requests from a content script to localhost get blocked by CORS; the worker has host permissions. If the server is down, nothing is lost. |
 | **Popup** (`extension/popup.html`) | Shows server status, captured / delivered / queued counts, a pause switch. | So you can see capture is working without opening anything. |
-| **Ingest API** (`POST /api/ingest`) | Inserts posts with `INSERT OR IGNORE` on URN. A text hash marks reposts as `duplicate`. Returns right away. | The extension never waits on an LLM. Accept fast, process later. |
+| **Ingest API** (`POST /api/ingest`) | Stores posts by key (URN or `ck:` hash). Same key with longer text → update. Same text + same author under a new key → ignored. Same text, different author → `duplicate`. Every decision goes to `events`. Returns right away. | The extension never waits on an LLM. Accept fast, process later. |
 | **Stage 1 · Keyword gate** | Regex for hiring signals (hiring, opening, vacancy, JD, send your CV, DM me, email address…). | Free and instant. Keeps you on the free tier. |
 | **Stage 2 · Classify + extract** | One LLM call → JSON: `is_job_post, role, company, exp_min, exp_max, location, work_mode, tech_stack[], emails[], apply_url, summary`. Zod-validated. | One call instead of two halves quota use. **Safety rule:** keep an email only if it appears literally in the post text. |
 | **Stage 3 · Filter + score** | Plain code reads `preferences.yaml`: roles, years vs. required range, locations, must-have / avoid keywords. Score = stack overlap with your skills, plus reasons. | Predictable, free, and you can see exactly why a post was dropped. |
@@ -91,6 +91,12 @@ That's about 23 LLM calls per session, well within free quotas. Matching posts w
 | **Sender queue** | Nodemailer + Gmail SMTP, resume attached, 60–120 s gap with jitter, daily cap of about 25, skips contacts emailed in the last 30 days. Stores message ID / error. | Bursts of near-identical emails land in spam or get your Gmail flagged. |
 | **SQLite + event log** | `data/hireloop.db`. Every decision is logged in `events`. | When a good post gets dropped, you can see which stage dropped it. |
 | **Profile files** | `profile.md`, `preferences.yaml`, `resume.pdf`. | LLMs read Markdown better than a PDF dump, and you can edit it in seconds. |
+
+### LinkedIn's two DOM generations (found in 004)
+LinkedIn now serves a server-driven UI with **hashed class names, no `data-urn`, and no post permalinks** (seen on search results, April 2026). The classic markup (`data-urn="urn:li:activity:…"`) may still appear. The extension supports both and uses only stable hooks (`role`, `data-testid`, `componentkey`, `aria-label`, `href`):
+- Post key: the URN when present, else `ck:<hash>` from `componentkey="expanded<hash>FeedType_…"`, else the server derives `tx:<hash of author+text>`.
+- No permalink in the new DOM: the UI links the job card, the author, and a LinkedIn content search for the post's opening words.
+- The full post text is normally in the DOM even behind "…more", so no expanding is needed.
 
 ---
 
@@ -128,14 +134,16 @@ hireloop/
 │       ├── index.ts         ← app bootstrap
 │       ├── config.ts        ← env + paths
 │       ├── db/              ← schema + node:sqlite connection
+│       ├── app.ts           ← Express app (routes, origin guard); index.ts listens
 │       ├── routes/          ← one router per resource (ingest, posts, health…)
 │       └── lib/             ← profile loader, event log, text utils
 ├── client/                  ← React + TypeScript + Vite UI
 │   └── src/
 ├── extension/               ← Chrome MV3 extension (load unpacked)
 │   ├── manifest.json
-│   ├── selectors.js · content.js · background.js
-│   └── popup.html · popup.js
+│   ├── selectors.js · parse.js · content.js · background.js
+│   ├── popup.html · popup.js
+│   └── test/parse.test.html
 ├── profile/                 ← YOUR data (real files gitignored, *.example committed)
 └── data/                    ← hireloop.db (gitignored)
 ```
@@ -145,9 +153,10 @@ hireloop/
 ## 6. Data model
 
 ```
-posts     id, urn UNIQUE, text_hash, author, author_headline, author_url,
-          text, raw_text, url, emails(json), posted_label, page_url,
-          parse_quality, status, reject_reason, seen_at
+posts     id, urn UNIQUE (URN | ck:<hash> | tx:<hash>), text_hash, author,
+          author_headline, author_url, text, raw_text, url, emails(json),
+          posted_label, page_url, parse_quality, status, reject_reason, seen_at,
+          job_url, source (feed|search|profile|other)            ← v2
 
 jobs      post_id, title, company, exp_min, exp_max, location, work_mode,
           tech_stack(json), emails(json), apply_url, summary, score,
@@ -195,7 +204,7 @@ send:
 
 The goal is a job in 2 months, not a finished tool. Have it sending real emails by about day 10, then improve it while using it.
 
-### Phase 1 — Setup + profile + capture (days 1–3)
+### Phase 1 — Setup + profile + capture (days 1–3) ✅ done (docs 002–004)
 - Monorepo with npm workspaces: `server/` (Express + TS), `client/` (React + TS + Vite), `extension/` (MV3). `npm run dev` starts server + client.
 - SQLite schema (`posts`, `events`), `server/.env`, `GET /api/health` reporting whether profile files are set up.
 - Profile templates: `profile.md`, `preferences.yaml`; you add `resume.pdf`.
@@ -237,7 +246,7 @@ The goal is a job in 2 months, not a finished tool. Have it sending real emails 
 
 | Risk | Guard |
 |---|---|
-| LinkedIn changes its HTML | Selectors in one file with backups. Popup shows a warning when posts parse without text. |
+| LinkedIn changes its HTML | Selectors in one file with backups, stable hooks only (never hashed classes). Popup warns when posts parse without text. `extension/test/parse.test.html` to re-verify. |
 | LinkedIn terms of service | Reading the page you're viewing is low risk but not zero. Never auto-scroll, auto-click, auto-connect or auto-message. Only email leaves the tool. |
 | Post text cut off at "…more" | Full text is often already in the DOM. Otherwise mark `parse_quality=truncated`; expand it by hand if it looks good. |
 | Email only in an image or comment | Out of scope for v1 → Apply manually list. |

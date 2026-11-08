@@ -54,7 +54,7 @@ client/src/main.tsx  client/src/App.tsx  client/src/styles.css  client/src/lib/a
 7. `npm run typecheck` and `npm run build` pass.
 
 ## Status
-**Done. Waiting for owner review.**
+**Done.** (Later changes: 003 added the profile check to `/api/health`; 004 moved the app setup into `server/src/app.ts` and added schema v2.)
 
 Built as scoped above. Results on 2026-11-08 (Node v25.8.1):
 - `npm install`: 171 packages, 0 vulnerabilities.

@@ -1,0 +1,140 @@
+<!doctype html>
+<!--
+  Parser tests. Open this file in Chrome (file://…/extension/test/parse.test.html).
+  The posts below are SYNTHETIC, modelled on real LinkedIn markup structure (no real people).
+  When LinkedIn changes its HTML: save a page, copy one post's structure here, fix selectors.js
+  until this page is all green.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>HireLoop parser tests</title>
+    <style>
+      body { font: 14px/1.5 system-ui, sans-serif; margin: 20px; }
+      .pass { color: #2f7a3d; } .fail { color: #b3261e; font-weight: 600; }
+      #fixtures { display: none; }
+      pre { background: #f5f7f9; padding: 8px; overflow-x: auto; }
+    </style>
+  </head>
+  <body>
+    <h1>HireLoop parser tests</h1>
+    <p id="summary">Running…</p>
+    <ul id="results"></ul>
+
+    <div id="fixtures">
+      <!-- 1. New server-driven UI (2026): hashed classes, componentkey, data-testid -->
+      <div role="listitem" componentkey="expandedAbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcFeedType_MAIN_FEED" data-case="sdui">
+        <div class="x1a2b3c" componentkey="AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abc">
+          <h2><span>Feed post</span></h2>
+          <div componentkey="11111111-2222-3333-4444-555555555555">
+            <a href="https://www.linkedin.com/in/test-recruiter/"><figure><img alt="View Test Recruiter’s profile" /></figure></a>
+            <a href="https://www.linkedin.com/in/test-recruiter/?miniProfileUrn=abc">
+              <div>
+                <div aria-label="Test Recruiter Verified Profile 2nd"><div><div><p>Test Recruiter</p></div></div>
+                  <div><p>• 2nd<span aria-hidden="true"></span></p></div></div>
+                <div><p>Talent Acquisition at Example Corp</p></div>
+                <div><p componentkey="aaa">3h •<span></span></p></div>
+              </div>
+            </a>
+            <button type="button" aria-label="Follow Test Recruiter"><span>Follow</span></button>
+          </div>
+          <p componentkey="bbb">
+            <span tabindex="-1" data-testid="expandable-text-box">🚀 We're hiring a Node.js developer (2-4 yrs)!<br /><br />Location: Bangalore / Remote<br />Send your CV to jobs@example.com<br /><br /><a href="https://www.linkedin.com/search/results/all/?keywords=%23hiring"><span><strong>#Hiring</strong></span></a> <a href="#"><span><strong>#NodeJS</strong></span></a><button type="button" aria-hidden="true" data-testid="expandable-text-button"><span><span>…</span><span>more</span></span></button></span>
+          </p>
+          <a href="https://www.linkedin.com/jobs/view/1234567890/?trackingId=xyz"><div><p><span>Node.js Developer</span></p><p>Example Corp</p></div></a>
+          <button type="button" aria-label="Reaction button state: no reaction"><span>Like</span></button>
+        </div>
+      </div>
+
+      <!-- 2. Classic feed markup -->
+      <div data-urn="urn:li:activity:7300000000000000042" class="feed-shared-update-v2" data-case="classic">
+        <div class="update-components-actor__container">
+          <a class="update-components-actor__meta-link" href="https://www.linkedin.com/in/classic-person?trk=feed">
+            <span class="update-components-actor__title"><span aria-hidden="true">Classic Person</span><span class="visually-hidden">Classic Person</span></span>
+            <span class="update-components-actor__description"><span aria-hidden="true">Engineering Manager at Old Corp</span></span>
+            <span class="update-components-actor__sub-description"><span aria-hidden="true">1d • Edited •</span></span>
+          </a>
+        </div>
+        <div class="feed-shared-update-v2__description">
+          <div class="update-components-text"><span dir="ltr">Looking for React engineers.<br />DM me or email hr@oldcorp.in<br /><span class="visually-hidden">hashtag</span>#React</span></div>
+          <button class="feed-shared-inline-show-more-text__see-more-less-toggle">…see more</button>
+        </div>
+      </div>
+
+      <!-- 3. Promoted post: must be skipped -->
+      <div role="listitem" componentkey="expandedPROMOxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxFeedType_MAIN_FEED" data-case="promoted">
+        <a href="https://www.linkedin.com/company/some-brand/"><div><p>Some Brand</p><p>12,345 followers</p><p>Promoted</p></div></a>
+        <span data-testid="expandable-text-box">Buy our course!</span>
+        <button aria-label="Why am I seeing this ad?"></button>
+      </div>
+
+      <!-- 4. Unknown container: no root selector matches → found via text-box backup (in its own page section) -->
+    </div>
+
+    <div id="fixtures-backup" style="display: none">
+      <article data-case="backup">
+        <a href="https://www.linkedin.com/company/acme/"><div><p>Acme Inc</p><p>Hiring now</p></div></a>
+        <div data-testid="expandable-text-box">Backup path works: hiring Python devs, apply at careers@acme.io</div>
+      </article>
+    </div>
+
+    <script src="../selectors.js"></script>
+    <script src="../parse.js"></script>
+    <script>
+      const loc = { origin: "https://www.linkedin.com", pathname: "/feed/" };
+      const results = [];
+      const check = (name, cond, detail) => results.push({ name, ok: !!cond, detail });
+
+      const fx = document.getElementById("fixtures");
+      const roots = HL_PARSE.findPostRoots(fx);
+      check("finds 3 post roots (sdui, classic, promoted)", roots.length === 3, roots.map((r) => r.dataset.case).join(", "));
+
+      const byCase = Object.fromEntries(roots.map((r) => [r.dataset.case, HL_PARSE.parsePost(r, loc)]));
+
+      const s = byCase.sdui || {};
+      check("sdui: key from componentkey", s.key === "ck:AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abc", s.key);
+      check("sdui: author", s.author === "Test Recruiter", s.author);
+      check("sdui: headline skips '• 2nd'", s.authorHeadline === "Talent Acquisition at Example Corp", s.authorHeadline);
+      check("sdui: posted label", s.postedLabel === "3h", s.postedLabel);
+      check("sdui: author url", s.authorUrl && s.authorUrl.startsWith("https://www.linkedin.com/in/test-recruiter/"), s.authorUrl);
+      check("sdui: text keeps line breaks", s.text && s.text.includes("Location: Bangalore / Remote\nSend your CV"), s.text);
+      check("sdui: text has email and hashtags", s.text && s.text.includes("jobs@example.com") && s.text.includes("#NodeJS"), s.text);
+      check("sdui: '…more' button text removed", s.text && !/more$/.test(s.text), s.text);
+      check("sdui: quality ok (full text in DOM)", s.parseQuality === "ok", s.parseQuality);
+      check("sdui: job link", s.jobUrl && s.jobUrl.includes("/jobs/view/1234567890"), s.jobUrl);
+      check("sdui: no permalink (none in DOM)", s.url === null, s.url);
+      check("sdui: source from path", s.source === "feed", s.source);
+
+      const c = byCase.classic || {};
+      check("classic: key is the URN", c.key === "urn:li:activity:7300000000000000042", c.key);
+      check("classic: permalink", c.url === "https://www.linkedin.com/feed/update/urn:li:activity:7300000000000000042/", c.url);
+      check("classic: author", c.author === "Classic Person", c.author);
+      check("classic: headline", c.authorHeadline === "Engineering Manager at Old Corp", c.authorHeadline);
+      check("classic: posted label", c.postedLabel === "1d", c.postedLabel);
+      check("classic: 'hashtag' prefix removed", c.text && c.text.includes("#React") && !/hashtag/i.test(c.text), c.text);
+      check("classic: text", c.text && c.text.startsWith("Looking for React engineers.\nDM me"), c.text);
+
+      check("promoted post is flagged", byCase.promoted && byCase.promoted.promoted === true, JSON.stringify(byCase.promoted));
+
+      const bRoots = HL_PARSE.findPostRoots(document.getElementById("fixtures-backup"));
+      const b = bRoots[0] ? HL_PARSE.parsePost(bRoots[0], loc) : {};
+      check("backup root found via text box", bRoots.length === 1, bRoots.length);
+      check("backup: text", b.text && b.text.includes("careers@acme.io"), b.text);
+      check("backup: no key → server derives one", b.key === null, b.key);
+      check("backup: author from company link", b.author === "Acme Inc", b.author);
+
+      const failed = results.filter((r) => !r.ok);
+      const ul = document.getElementById("results");
+      for (const r of results) {
+        const li = document.createElement("li");
+        li.className = r.ok ? "pass" : "fail";
+        li.textContent = `${r.ok ? "✓" : "✗"} ${r.name}${r.ok ? "" : ` — got: ${JSON.stringify(r.detail)}`}`;
+        ul.append(li);
+      }
+      const summary = document.getElementById("summary");
+      summary.textContent = failed.length ? `${failed.length} of ${results.length} FAILED` : `All ${results.length} passed`;
+      summary.className = failed.length ? "fail" : "pass";
+      document.documentElement.dataset.result = failed.length ? "fail" : "pass";
+    </script>
+  </body>
+</html>

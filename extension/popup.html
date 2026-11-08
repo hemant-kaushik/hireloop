@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>HireLoop</title>
+    <style>
+      :root {
+        --bg: #ffffff; --ink: #15202b; --muted: #5a6775; --line: #d9e0e7; --soft: #f5f7f9;
+        --accent: #0f6e74; --ok: #2f7a3d; --bad: #b3261e; --warn: #a15c00; --idle: #9aa6b2;
+        color-scheme: light;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #16202a; --ink: #e4ebf1; --muted: #97a6b4; --line: #2a3846; --soft: #0f151b;
+          --accent: #5cc3c8; --ok: #74c785; --bad: #f2867e; --warn: #f0b45c; --idle: #5d6b78;
+          color-scheme: dark;
+        }
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; width: 320px; background: var(--bg); color: var(--ink); font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+      main { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+      header { display: flex; justify-content: space-between; align-items: center; }
+      h1 { margin: 0; font-size: 1.05rem; color: var(--accent); }
+      .status { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--idle); flex: none; }
+      .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); }
+      .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+      .stat { background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 6px 4px; text-align: center; }
+      .stat b { display: block; font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+      .stat span { font-size: 11px; color: var(--muted); }
+      .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+      .muted { color: var(--muted); } .small { font-size: 11.5px; }
+      .box { border-radius: 8px; padding: 8px 10px; border: 1px solid var(--line); }
+      .box.warn { border-color: var(--warn); color: var(--warn); }
+      .box.bad { border-color: var(--bad); color: var(--bad); }
+      .buttons { display: flex; gap: 6px; flex-wrap: wrap; }
+      button { font: inherit; border: 1px solid var(--line); background: var(--soft); color: var(--ink); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+      button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+      button:disabled { opacity: 0.6; cursor: default; }
+      .switch { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+      .switch input { width: 16px; height: 16px; accent-color: var(--accent); margin: 0; }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>HireLoop</h1>
+        <div class="status"><span id="serverDot" class="dot"></span><span id="serverText">Checking server…</span></div>
+      </header>
+
+      <label class="switch">
+        <input type="checkbox" id="pause" />
+        <span>Pause capturing</span>
+      </label>
+
+      <div>
+        <div class="grid">
+          <div class="stat"><b id="captured">0</b><span>captured</span></div>
+          <div class="stat"><b id="delivered">0</b><span>delivered</span></div>
+          <div class="stat"><b id="newOnServer">0</b><span>new</span></div>
+          <div class="stat"><b id="queued">0</b><span>queued</span></div>
+        </div>
+        <p class="muted small" style="margin: 6px 0 0">Totals since last reset. "New" = posts the server hadn't seen before.</p>
+      </div>
+
+      <div id="tabBox" class="box small" hidden></div>
+      <div id="warnBox" class="box warn small" hidden></div>
+      <div id="errorBox" class="box bad small" hidden></div>
+
+      <div class="buttons">
+        <button id="flush" class="primary">Send now</button>
+        <button id="open">Open HireLoop</button>
+        <button id="reset" title="Reset the counters (the queue is kept)">Reset counts</button>
+      </div>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

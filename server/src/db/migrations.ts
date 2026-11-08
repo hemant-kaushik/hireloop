@@ -36,4 +36,11 @@ export const MIGRATIONS: string[] = [
   CREATE INDEX idx_events_post ON events(post_id);
   CREATE INDEX idx_events_at   ON events(at DESC);
   `,
+
+  // v2 — capture details from the extension (004)
+  `
+  ALTER TABLE posts ADD COLUMN job_url TEXT;       -- LinkedIn job card link inside the post, if any
+  ALTER TABLE posts ADD COLUMN source  TEXT;       -- feed | search | profile | other
+  CREATE INDEX idx_posts_status_seen ON posts(status, seen_at DESC);
+  `,
 ];

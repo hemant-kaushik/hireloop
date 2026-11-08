@@ -54,7 +54,7 @@ client/src/lib/api.ts  client/src/App.tsx  client/src/components/ProfileCard.tsx
 8. `npm run typecheck` and `npm run build` pass.
 
 ## Status
-**Done. Waiting for owner review.**
+**Done.**
 
 Built as scoped above, plus one refactor: health polling moved from `HealthCard` into `client/src/lib/useHealth.ts`, so the status card and the profile card share one poll instead of two.
 
@@ -71,7 +71,7 @@ Results on 2026-11-08 (Node v25.8.1), API run on a test port with real files pla
 - `git check-ignore`: `profile/profile.md` is ignored; `profile/README.md` and `*.example.*` are tracked.
 - `PLAN.md`: database filename corrected to `hireloop.db`.
 
-**Not verified:** the UI card wasn't screenshotted in this session. Check it by hand with step 2 onwards of "How to test".
+UI card checked in 004 by screenshot (all three files ready, with your real profile). The card moved to the **Setup** view in 004.
 
 Open questions:
 - The 200-character minimum for `profile.md` is a guess. Raise it if drafts come out thin in Phase 3.
