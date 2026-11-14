@@ -53,6 +53,7 @@ export type Post = {
   seen_at: number;
   job_url: string | null;
   source: string | null;
+  job: Job | null;
 };
 
 export type PostList = {
@@ -73,4 +74,51 @@ export const postsApi = {
     return getJSON<PostList>(`/api/posts?${qs}`);
   },
   get: (id: number) => getJSON<{ ok: boolean; post: Post & { raw_text: string }; events: PostEvent[] }>(`/api/posts/${id}`),
+};
+
+export type Job = {
+  post_id: number;
+  is_job_post: boolean;
+  is_job_seeker: boolean;
+  title: string | null;
+  other_titles: string[];
+  company: string | null;
+  exp_min: number | null;
+  exp_max: number | null;
+  location: string | null;
+  work_mode: string | null;
+  employment_type: string | null;
+  tech_stack: string[];
+  emails: string[];
+  apply_url: string | null;
+  summary: string | null;
+  score: number | null;
+  match_reasons: string[];
+  filter_reasons: string[];
+  provider: string | null;
+  model: string | null;
+};
+
+export type RunState = {
+  running: boolean;
+  startedAt: number | null;
+  finishedAt: number | null;
+  total: number;
+  done: number;
+  counts: Record<string, number>;
+  lastError: string | null;
+  stoppedReason: string | null;
+};
+
+async function postJSON<T>(path: string, body: unknown = {}): Promise<T> {
+  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error((data as { error?: string } | null)?.error ?? `${res.status} ${res.statusText}`);
+  return data as T;
+}
+
+export const processApi = {
+  status: () => getJSON<{ ok: boolean; state: RunState }>("/api/process/status"),
+  start: () => postJSON<{ ok: boolean; state: RunState }>("/api/process"),
+  reapply: () => postJSON<{ ok: boolean; total: number; counts: Record<string, number> }>("/api/process/reapply"),
 };

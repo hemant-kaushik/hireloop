@@ -19,6 +19,14 @@ must_have_any: [node, react, python]
 # Drop posts that mention any of these.
 avoid: [unpaid, internship, sales]
 
+# Optional: drop every post whose author name contains one of these (whole words),
+# e.g. agency pages that repost the same openings. "Ocean IT" blocks "Ocean IT Tech".
+block_authors: []
+
+# Optional: switch off built-in pre-filter rules (all are on by default):
+# f2f, non_india, local_only, internship, job_seeker, low_salary, staffing
+disable_rules: []
+
 # Email sending limits (used in Phase 3).
 send:
   daily_cap: 25              # max emails per day (1–100)

@@ -5,6 +5,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { parse as parseYaml, YAMLParseError } from "yaml";
 import { config } from "../config.js";
+import { RULE_IDS } from "../pipeline/prefilter.js";
 
 export type FileState = "ok" | "missing" | "template" | "invalid";
 
@@ -28,6 +29,8 @@ export type Preferences = {
   locations: string[];
   must_have_any: string[];
   avoid: string[];
+  block_authors: string[]; // optional; whole-word phrase match on the author name
+  disable_rules: string[]; // optional; pre-filter rule ids to switch off
   send: {
     daily_cap: number;
     gap_seconds: [number, number];
@@ -145,7 +148,7 @@ function range(v: unknown, key: string, issues: Issues, opts: { def?: [number, n
   return [lo, hi];
 }
 
-const TOP_KEYS = ["roles", "my_experience_years", "accept_exp_range", "locations", "must_have_any", "avoid", "send"];
+const TOP_KEYS = ["roles", "my_experience_years", "accept_exp_range", "locations", "must_have_any", "avoid", "block_authors", "disable_rules", "send"];
 const SEND_KEYS = ["daily_cap", "gap_seconds", "recontact_after_days", "dry_run"];
 
 export function validatePreferences(raw: unknown): { prefs?: Preferences } & Issues {
@@ -175,6 +178,8 @@ export function validatePreferences(raw: unknown): { prefs?: Preferences } & Iss
     locations: stringList(obj, "locations", issues),
     must_have_any: stringList(obj, "must_have_any", issues),
     avoid: stringList(obj, "avoid", issues),
+    block_authors: stringList(obj, "block_authors", issues),
+    disable_rules: stringList(obj, "disable_rules", issues),
     send: {
       daily_cap: num(send.daily_cap, "send.daily_cap", issues, { def: 25, min: 1, max: 100, int: true }),
       gap_seconds: range(send.gap_seconds, "send.gap_seconds", issues, { def: [60, 120], min: 10 }),
@@ -182,6 +187,8 @@ export function validatePreferences(raw: unknown): { prefs?: Preferences } & Iss
       dry_run: dryRun,
     },
   };
+  const badRules = prefs.disable_rules.filter((r) => !(RULE_IDS as readonly string[]).includes(r));
+  if (badRules.length) issues.errors.push(`\`disable_rules\`: unknown rule(s) ${badRules.join(", ")}. Valid: ${RULE_IDS.join(", ")}.`);
   if (prefs.locations.length === 0) issues.warnings.push("`locations` is empty, so posts won't be filtered by location.");
   return issues.errors.length ? issues : { ...issues, prefs };
 }
@@ -258,4 +265,19 @@ export function loadProfile(): Profile {
   const bad = [p, prefs, resume].filter((f) => f.state !== "ok");
   if (bad.length) throw new Error(`Profile not ready: ${bad.map((f) => `${f.path} is ${f.state}${f.reason ? ` (${f.reason})` : ""}`).join("; ")}`);
   return { profileMd: p.content!, preferences: prefs.prefs!, resumePath: paths.resume };
+}
+
+/** Words from the "## Skills" section of profile.md, split on commas/slashes. Used locally for scoring; never sent anywhere. */
+export function skillsFromProfile(md: string): string[] {
+  const m = md.match(/^##\s*(?:technical\s+)?skills\b[^\n]*\n([\s\S]*?)(?=^##\s|(?![\s\S]))/im);
+  if (!m) return [];
+  const out = new Set<string>();
+  for (const line of m[1].split("\n")) {
+    const body = line.replace(/^\s*[-*]\s*/, "").replace(/^[^:]{1,40}:\s*/, ""); // drop "- Backend:" labels
+    for (const part of body.split(/[,/;]|\band\b/)) {
+      const t = part.replace(/\(.*?\)/g, "").trim().toLowerCase();
+      if (t && t.length <= 40) out.add(t);
+    }
+  }
+  return [...out];
 }

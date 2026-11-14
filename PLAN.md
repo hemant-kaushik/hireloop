@@ -94,7 +94,7 @@ That's about 23 LLM calls per session, well within free quotas. Matching posts w
 
 ### LinkedIn's two DOM generations (found in 004)
 LinkedIn now serves a server-driven UI with **hashed class names, no `data-urn`, and no post permalinks** (seen on search results, April 2026). The classic markup (`data-urn="urn:li:activity:…"`) may still appear. The extension supports both and uses only stable hooks (`role`, `data-testid`, `componentkey`, `aria-label`, `href`):
-- Post key: the URN when present, else `ck:<hash>` from `componentkey="expanded<hash>FeedType_…"`, else the server derives `tx:<hash of author+text>`.
+- Post key: the URN when present, else `ck:<hash>` from the container's `componentkey="<prefix><hash>FeedType_…"` (the prefix changes between releases: `expanded` in April 2026, `update-card-focus` in November 2026; see doc 005), else the server derives `tx:<hash of author+text>` and upgrades it to the real key when one is seen later.
 - No permalink in the new DOM: the UI links the job card, the author, and a LinkedIn content search for the post's opening words.
 - The full post text is normally in the DOM even behind "…more", so no expanding is needed.
 
@@ -111,6 +111,7 @@ LinkedIn now serves a server-driven UI with **hashed class names, no `data-urn`,
 | Config parsing | `yaml` | free | Reads `preferences.yaml`. |
 | Validation | Zod | free | Rejects malformed LLM JSON (phase 2). |
 | LLM primary | Google Gemini API (Flash-Lite to extract, Flash to draft) | free tier | Native JSON output. AI Studio key, no card needed. |
+| LLM paid fallback | OpenAI (`gpt-4.1-mini`) | paid | Optional third provider, used only when the free ones fail (009). |
 | LLM fallback | Groq (Llama 3.3 70B / gpt-oss-120b) | free tier | Fast, separate quota. |
 | LLM offline | Ollama + 7–8B model (optional) | free | No limits if you have ~8 GB of RAM free. |
 | Email | Nodemailer + Gmail SMTP + App Password | free | Sends from your real address. Needs 2-step verification. |
@@ -158,9 +159,10 @@ posts     id, urn UNIQUE (URN | ck:<hash> | tx:<hash>), text_hash, author,
           posted_label, page_url, parse_quality, status, reject_reason, seen_at,
           job_url, source (feed|search|profile|other)            ← v2
 
-jobs      post_id, title, company, exp_min, exp_max, location, work_mode,
-          tech_stack(json), emails(json), apply_url, summary, score,
-          match_reasons(json)                                    ← phase 2
+jobs      post_id UNIQUE, is_job_post, title, company, exp_min, exp_max,
+          location, work_mode, tech_stack(json), emails(json), apply_url,
+          summary, score (0–100), match_reasons(json), filter_reasons(json),
+          provider, model, extracted_at                          ← phase 2
 
 drafts    job_id, to_email, subject, body, status, approved_at,
           sent_at, message_id, error                             ← phase 3
@@ -173,11 +175,13 @@ events    id, at, post_id, type, data(json)
 **Post status lifecycle**
 
 ```
-new ─┬─► duplicate
-     ├─► rejected_prefilter
-     ├─► not_job
-     ├─► filtered_out
-     └─► matched ─┬─► no_email  (→ Apply manually list)
+new ─┬─► duplicate                 (same text, other author)
+     ├─► blocked                   (author in block_authors)
+     ├─► rejected_prefilter        (keyword gate: no hiring signal, or job-seeker post)
+     ├─► not_job                   (LLM: not a job post)
+     ├─► filtered_out              (your rules; reason stored)
+     ├─► error                     (all LLM providers failed; retried later)
+     └─► matched ─┬─► no_email  (→ Apply manually list, with job card link if any)
                   └─► drafted ─► approved ─► sent | failed
                                 └► rejected
 ```
@@ -191,6 +195,7 @@ accept_exp_range: [0, 3]
 locations: [bangalore, remote, gurgaon]
 must_have_any: [node, react, python]
 avoid: [unpaid, internship, sales]
+block_authors: []          # optional: author names whose posts are always dropped (e.g. agency spam)
 send:
   daily_cap: 25
   gap_seconds: [60, 120]
@@ -213,10 +218,32 @@ The goal is a job in 2 months, not a finished tool. Have it sending real emails 
 - **Done when:** you scroll for 2 minutes and see every visible post in the React app exactly once.
 
 ### Phase 2 — Understand + filter + score (days 4–6)
-- Keyword gate. LLM gateway (Gemini → Groq → Ollama), rate limiter, Zod validation.
-- One classify + extract prompt. Keep emails only if they appear in the post text.
-- Apply `preferences.yaml` rules and calculate a score with match reasons. Log the reason for every rejection.
-- 30 real posts saved as fixtures (replay suite) to measure accuracy.
+Decisions from the owner's answers are recorded in `docs/006-phase-2-plan.md`. Built in three changes:
+
+**007 — Keyword gate + LLM gateway** ✅ built
+- `block_authors` check, then a keyword gate (free regex): needs a hiring signal; then the friend's rules (f2f, non_india, local_only, internship, job_seeker, low_salary, staffing; each can be switched off with `disable_rules`); drops job-seeker posts ("#OpenToWork", "looking for a job" without a hiring signal). Reason logged.
+- LLM gateway `generateJSON(prompt, zodSchema)`: Gemini → Groq → OpenAI (paid, last) → Ollama (optional, off by default). Token-bucket rate limiter per provider, one retry on invalid JSON, daily call budget. Model names live in `server/.env`; current free-tier models and limits are checked when this is built.
+- **Privacy:** only the post text goes to the LLM, with emails and phone numbers masked (`[EMAIL]`, `[PHONE]`). No author name and no profile in Phase 2. Emails come from the server's regex, never from the LLM.
+
+**008 — Extract + filter + score** ✅ built (live LLM run pending keys)
+- One classify + extract prompt → `jobs` row (title, company, experience range, location, work mode, stack, apply URL, summary), validated with Zod.
+- Rules from `preferences.yaml`, plain code, every rejection with a reason:
+  - Words match as **whole words**, case-insensitive (like the friend's repo's `\b…\b` regexes), with aliases (node = node.js = nodejs, bangalore = bengaluru, gurgaon = gurugram) and safe handling of `c++`, `.net`, `next.js`.
+  - `avoid` and `block_authors` → `filtered_out`.
+  - Experience: kept if the post's range overlaps `accept_exp_range`.
+  - Location: kept if any of `locations` matches.
+  - Role: must match `roles`.
+  - **Not stated** (experience or location missing) → kept, with lower score and a reason like "experience not stated".
+- Score 0–100 = stack overlap 50 + role 20 + experience fit 20 + location 10 (half credit when not stated). Weights in one config object.
+- Matched with an email → `matched`. Matched without an email → `no_email` (Apply manually list, with the job card link if there is one).
+
+**009 — OpenAI provider + verified models** ✅ built
+- OpenAI added as a third provider (paid, so last in the order). Defaults verified with live calls: Gemini `gemini-3.5-flash-lite`, Groq `openai/gpt-oss-120b`, OpenAI `gpt-4.1-mini`. `llm:check -- --call` makes one test call per provider.
+
+**010 — UI + replay**
+- Post cards show the extracted job, score and reasons; tabs for Matched, Apply manually, Filtered out, Not a job; Reprocess button.
+- Tests use **dummy posts only** (about 30 synthetic posts covering each rule and edge case). Optional `npm run replay` reads your local DB read-only and prints a report without copying posts anywhere.
+
 - **Done when:** job posts show correct fields, and every dropped post shows a reason you agree with.
 
 ### Phase 3 — Draft + review + send (days 7–10)
@@ -250,7 +277,7 @@ The goal is a job in 2 months, not a finished tool. Have it sending real emails 
 | LinkedIn terms of service | Reading the page you're viewing is low risk but not zero. Never auto-scroll, auto-click, auto-connect or auto-message. Only email leaves the tool. |
 | Post text cut off at "…more" | Full text is often already in the DOM. Otherwise mark `parse_quality=truncated`; expand it by hand if it looks good. |
 | Email only in an image or comment | Out of scope for v1 → Apply manually list. |
-| LLM invents an email or skill | Keep an email only if it's literally in the post. The prompt only allows claims from `profile.md`. You review every draft. |
+| LLM invents an email or skill | Emails come only from a regex over the post text (they're masked before the LLM sees the text). The drafting prompt only allows claims from `profile.md`. You review every draft. |
 | Gmail spam flags | 25 a day or fewer, 60–120 s apart, plain text, personalized, no repeat recipient within 30 days. |
 | A free tier gets cut | Gateway falls back to the next provider; Ollama has no limits. |
 

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { dbHealth } from "../db/index.js";
 import { checkProfile } from "../lib/profile.js";
+import { llmStatus } from "../llm/gateway.js";
 
 const startedAt = Date.now();
 
@@ -17,5 +18,6 @@ healthRouter.get("/", (_req, res) => {
     uptimeSec: Math.round((Date.now() - startedAt) / 1000),
     db,
     profile: checkProfile(),
+    llm: llmStatus(),
   });
 });

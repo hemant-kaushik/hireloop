@@ -1,15 +1,63 @@
 import { useCallback, useEffect, useState } from "react";
-import { postsApi, type Post, type PostEvent, type PostList } from "../lib/api";
+import { postsApi, type Job, type Post, type PostEvent, type PostList } from "../lib/api";
+import { ProcessBar } from "./ProcessBar";
 
 const POLL_MS = 5000;
 const PAGE = 50;
 
-// Phase 1 statuses; later phases add more (they show up automatically via counts).
+// Fixed tabs; any other status shows up automatically via counts, with a label from STATUS_LABEL.
 const TABS: { id: string; label: string }[] = [
   { id: "all", label: "All" },
   { id: "new", label: "New" },
-  { id: "duplicate", label: "Duplicates" },
+  { id: "matched", label: "Matched" },
+  { id: "no_email", label: "Apply manually" },
 ];
+const STATUS_LABEL: Record<string, string> = {
+  filtered_out: "Filtered out",
+  not_job: "Not a job",
+  rejected_prefilter: "Pre-filtered",
+  blocked: "Blocked",
+  error: "Errors",
+  duplicate: "Duplicates",
+};
+
+function expLabel(j: Job): string | null {
+  if (j.exp_min === null && j.exp_max === null) return null;
+  if (j.exp_min !== null && j.exp_max !== null) return j.exp_min === j.exp_max ? `${j.exp_min} yrs` : `${j.exp_min}–${j.exp_max} yrs`;
+  return j.exp_min !== null ? `${j.exp_min}+ yrs` : `≤${j.exp_max} yrs`;
+}
+
+/** Extracted job (Phase 2): title line, stack, and why it matched or was dropped. */
+function JobSummary({ job, status }: { job: Job; status: string }) {
+  if (!job.is_job_post) return null;
+  const facts = [job.company, expLabel(job), [job.location, job.work_mode].filter(Boolean).join(" · ") || null].filter(Boolean);
+  const reasons = status === "filtered_out" ? [] : job.match_reasons;
+  return (
+    <div className="job">
+      <div className="job-title">
+        {job.score !== null && <span className={`score ${job.score >= 70 ? "hi" : job.score >= 45 ? "mid" : "lo"}`}>{job.score}</span>}
+        <strong>{job.title ?? "Untitled role"}</strong>
+        {facts.length > 0 && <span className="muted small"> · {facts.join(" · ")}</span>}
+      </div>
+      {job.other_titles.length > 0 && <div className="small muted">Also: {job.other_titles.join(", ")}</div>}
+      {job.tech_stack.length > 0 && (
+        <div className="chips">
+          {job.tech_stack.map((t) => (
+            <span key={t} className="chip small">
+              {t}
+            </span>
+          ))}
+        </div>
+      )}
+      {reasons.length > 0 && <div className="small muted">{reasons.join(" · ")}</div>}
+      {job.apply_url && (
+        <a className="small" href={job.apply_url} target="_blank" rel="noreferrer">
+          Apply link
+        </a>
+      )}
+    </div>
+  );
+}
 
 function timeAgo(ms: number): string {
   const s = Math.round((Date.now() - ms) / 1000);
@@ -56,6 +104,8 @@ function PostCard({ post }: { post: Post }) {
         </div>
       </div>
 
+      {post.job && <JobSummary job={post.job} status={post.status} />}
+
       <div className={`post-text ${expanded || !long ? "" : "collapsed"}`}>{post.text || <em className="muted">No text captured.</em>}</div>
       {long && (
         <button className="linkish small" onClick={() => setExpanded(!expanded)}>
@@ -64,7 +114,7 @@ function PostCard({ post }: { post: Post }) {
       )}
 
       <div className="post-foot small">
-        <span className={`badge status-${post.status}`}>{post.status}</span>
+        <span className={`badge status-${post.status}`}>{STATUS_LABEL[post.status] ?? post.status.replace(/_/g, " ")}</span>
         {post.parse_quality !== "ok" && (
           <span className="badge warn" title="How the text was read from the page">
             {post.parse_quality}
@@ -138,10 +188,11 @@ export function PostsPage() {
   const allCount = Object.entries(counts).reduce((n, [s, c]) => (s === "duplicate" ? n : n + c), 0);
   const extraTabs = Object.keys(counts)
     .filter((s) => !TABS.some((t) => t.id === s))
-    .map((s) => ({ id: s, label: s.replace(/_/g, " ") }));
+    .map((s) => ({ id: s, label: STATUS_LABEL[s] ?? s.replace(/_/g, " ") }));
 
   return (
     <div className="main">
+      <ProcessBar pending={(counts.new ?? 0) + (counts.error ?? 0)} onChange={load} />
       <div className="toolbar">
         <div className="tabs" role="tablist">
           {[...TABS, ...extraTabs].map((t) => (

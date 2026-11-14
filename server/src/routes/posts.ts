@@ -9,6 +9,22 @@ const COLUMNS = `id, urn, author, author_headline, author_url, text, url, emails
 
 const toApi = (r: PostRow) => ({ ...r, emails: JSON.parse(r.emails) as string[] });
 
+type JobRow = Record<string, unknown> & { post_id: number };
+const JSON_COLS = ["other_titles", "tech_stack", "emails", "match_reasons", "filter_reasons"];
+
+/** Extracted job rows (Phase 2) for these posts, JSON columns parsed. */
+function jobsFor(ids: number[]): Map<number, Record<string, unknown>> {
+  if (!ids.length) return new Map();
+  const rows = db.prepare(`SELECT * FROM jobs WHERE post_id IN (${ids.map(() => "?").join(",")})`).all(...ids) as JobRow[];
+  return new Map(
+    rows.map((j) => {
+      const out: Record<string, unknown> = { ...j, is_job_post: !!j.is_job_post, is_job_seeker: !!j.is_job_seeker };
+      for (const c of JSON_COLS) out[c] = JSON.parse(j[c] as string);
+      return [j.post_id, out];
+    }),
+  );
+}
+
 export const postsRouter = Router();
 
 /**
@@ -45,7 +61,8 @@ postsRouter.get("/", (req, res) => {
     ),
   );
 
-  res.json({ ok: true, posts: rows.map(toApi), total, limit, offset, counts });
+  const jobs = jobsFor(rows.map((r) => r.id as number));
+  res.json({ ok: true, posts: rows.map((r) => ({ ...toApi(r), job: jobs.get(r.id as number) ?? null })), total, limit, offset, counts });
 });
 
 /** GET /api/posts/:id → the post with its full text and its event log. */
@@ -56,5 +73,5 @@ postsRouter.get("/:id", (req, res) => {
     res.status(404).json({ ok: false, error: "Post not found" });
     return;
   }
-  res.json({ ok: true, post: toApi(row), events: eventsForPost(id) });
+  res.json({ ok: true, post: { ...toApi(row), job: jobsFor([id]).get(id) ?? null }, events: eventsForPost(id) });
 });

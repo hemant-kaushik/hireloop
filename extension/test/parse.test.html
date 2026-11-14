@@ -46,6 +46,31 @@
         </div>
       </div>
 
+      <!-- 1b. Server-driven UI as served in Nov 2026: "update-card-focus" prefix; headline and
+           time are SIBLINGS of the author link, not inside it -->
+      <div role="listitem" componentkey="update-card-focusZyXwVuTsRqPoNmLkJiHgFeDcBa9876543210-_zyxFeedType_FLAGSHIP_SEARCH" data-case="live">
+        <div data-display-contents="true">
+          <div componentkey="ZyXwVuTsRqPoNmLkJiHgFeDcBa9876543210-_zyx">
+            <h2><span>Feed post</span></h2>
+            <div>
+              <div><div><a href="https://www.linkedin.com/in/live-hr/"><figure><span data-dynamic-icon-loading=""></span></figure></a></div></div>
+              <div><div>
+                <div><a href="https://www.linkedin.com/in/live-hr/"><div><div aria-label="Live HR  2nd">
+                  <div><div><p><span>Live HR</span></p></div></div>
+                  <div><p><span>• 2nd</span></p></div>
+                </div></div></a></div>
+                <div><p><span>Senior Executive Human Resources at Example Group</span></p></div>
+                <div><div></div></div>
+                <div><p componentkey="t1"><span>3d</span></p></div>
+                <a href="https://www.linkedin.com/in/live-hr/"><div aria-label="Live HR  2nd"></div></a>
+              </div></div>
+              <div><button type="button" aria-label="Follow Live HR"><span><span>Follow</span></span></button></div>
+            </div>
+            <p componentkey="t2"><span tabindex="-1" data-testid="expandable-text-box">TODAY'S NEW JOB OPENINGS<br />MERN developer, 2+ yrs, Noida. Mail resume@example.org<button type="button" data-testid="expandable-text-button"><span>…</span><span>more</span></button></span></p>
+          </div>
+        </div>
+      </div>
+
       <!-- 2. Classic feed markup -->
       <div data-urn="urn:li:activity:7300000000000000042" class="feed-shared-update-v2" data-case="classic">
         <div class="update-components-actor__container">
@@ -87,7 +112,7 @@
 
       const fx = document.getElementById("fixtures");
       const roots = HL_PARSE.findPostRoots(fx);
-      check("finds 3 post roots (sdui, classic, promoted)", roots.length === 3, roots.map((r) => r.dataset.case).join(", "));
+      check("finds 4 post roots (sdui, live, classic, promoted)", roots.length === 4, roots.map((r) => r.dataset.case).join(", "));
 
       const byCase = Object.fromEntries(roots.map((r) => [r.dataset.case, HL_PARSE.parsePost(r, loc)]));
 
@@ -104,6 +129,14 @@
       check("sdui: job link", s.jobUrl && s.jobUrl.includes("/jobs/view/1234567890"), s.jobUrl);
       check("sdui: no permalink (none in DOM)", s.url === null, s.url);
       check("sdui: source from path", s.source === "feed", s.source);
+
+      const l = byCase.live || {};
+      check("live: key from update-card-focus componentkey", l.key === "ck:ZyXwVuTsRqPoNmLkJiHgFeDcBa9876543210-_zyx", l.key);
+      check("live: author", l.author === "Live HR", l.author);
+      check("live: headline outside the author link", l.authorHeadline === "Senior Executive Human Resources at Example Group", l.authorHeadline);
+      check("live: posted label outside the author link", l.postedLabel === "3d", l.postedLabel);
+      check("live: text", l.text === "TODAY'S NEW JOB OPENINGS\nMERN developer, 2+ yrs, Noida. Mail resume@example.org", l.text);
+      check("live: author url", l.authorUrl === "https://www.linkedin.com/in/live-hr/", l.authorUrl);
 
       const c = byCase.classic || {};
       check("classic: key is the URN", c.key === "urn:li:activity:7300000000000000042", c.key);

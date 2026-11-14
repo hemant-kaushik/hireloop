@@ -3,6 +3,7 @@ import "./db/index.js"; // opens the DB and runs migrations
 import { healthRouter } from "./routes/health.js";
 import { ingestRouter } from "./routes/ingest.js";
 import { postsRouter } from "./routes/posts.js";
+import { processRouter } from "./routes/process.js";
 import { profileRouter } from "./routes/profile.js";
 
 /**
@@ -34,6 +35,7 @@ export function createApp() {
   app.use("/api/profile", profileRouter);
   app.use("/api/ingest", ingestRouter);
   app.use("/api/posts", postsRouter);
+  app.use("/api/process", processRouter);
 
   // Unknown API route → JSON 404 (not Express's HTML page)
   app.use("/api", (req, res) => {

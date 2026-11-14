@@ -1,13 +1,8 @@
 // API tests against a throwaway database. DB_PATH must be set before the app is imported.
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
 import type { AddressInfo } from "node:net";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import { after, before, test } from "node:test";
-
-const dir = mkdtempSync(path.join(tmpdir(), "hireloop-test-"));
-process.env.DB_PATH = path.join(dir, "test.db");
+import { cleanup } from "./helpers.ts"; // throwaway DB + dummy profile dir
 
 const { createApp } = await import("../src/app.ts");
 const { isAllowedOrigin } = await import("../src/app.ts");
@@ -23,7 +18,7 @@ before(async () => {
 });
 after(() => {
   close();
-  rmSync(dir, { recursive: true, force: true });
+  cleanup();
 });
 
 async function ingest(posts: unknown[], headers: Record<string, string> = {}) {
@@ -52,9 +47,11 @@ const hiring = {
   source: "feed",
 };
 
-test("schema is migrated to v2", async () => {
+test("schema is migrated to the latest version", async () => {
+  const { MIGRATIONS } = await import("../src/db/migrations.ts");
   const { body } = await get("/api/health");
-  assert.equal(body.db.schemaVersion, 2);
+  assert.equal(body.db.schemaVersion, MIGRATIONS.length);
+  assert.ok(body.llm && Array.isArray(body.llm.providers), "health reports LLM status");
 });
 
 test("ingest inserts a new post, extracts emails and strips tracking params", async () => {
@@ -108,6 +105,28 @@ test("posts without a key get a stable derived key", async () => {
   assert.equal((await ingest([noKey])).body.seen, 1);
   const p = (await get("/api/posts?q=pune")).body.posts[0];
   assert.match(p.urn, /^tx:[0-9a-f]{32}$/);
+});
+
+test("a tx: key is upgraded to LinkedIn's key when seen again, and missing headline/time are filled", async () => {
+  const old = { author: "Yasmeen", text: "Today's openings: MERN dev, Noida. Mail cv@hirenza.example" }; // pre-005 capture
+  assert.equal((await ingest([old])).body.inserted, 1);
+  const before = (await get("/api/posts?q=hirenza")).body.posts[0];
+  assert.match(before.urn, /^tx:/);
+  assert.equal(before.author_headline, null);
+
+  const ck = "ck:xmrL5q1amhMGkDa0ERropd0dd-rlv7Gly2syHD6-zK0";
+  const now = { ...old, key: ck, authorHeadline: "HR at Hirenza", postedLabel: "3d" };
+  assert.equal((await ingest([now])).body.seen, 1);
+  const after = (await get(`/api/posts/${before.id}`)).body;
+  assert.equal(after.post.urn, ck);
+  assert.equal(after.post.author_headline, "HR at Hirenza");
+  assert.equal(after.post.posted_label, "3d");
+  assert.deepEqual(after.events.at(-1).data, { from: before.urn, to: ck });
+
+  // Expanding "…more" later now updates the same row instead of creating a second one.
+  const longer = await ingest([{ ...now, text: `${old.text} Also hiring QA, 1-3 yrs.` }]);
+  assert.equal(longer.body.updated, 1);
+  assert.equal((await get("/api/posts?q=hirenza")).body.total, 1);
 });
 
 test("invalid posts are counted, not stored", async () => {

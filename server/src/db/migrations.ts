@@ -43,4 +43,45 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE posts ADD COLUMN source  TEXT;       -- feed | search | profile | other
   CREATE INDEX idx_posts_status_seen ON posts(status, seen_at DESC);
   `,
+
+  // v3 — Phase 2: extracted jobs + LLM call log (007/008)
+  `
+  CREATE TABLE jobs (
+    post_id         INTEGER PRIMARY KEY REFERENCES posts(id) ON DELETE CASCADE,
+    is_job_post     INTEGER NOT NULL,              -- 0/1
+    is_job_seeker   INTEGER NOT NULL DEFAULT 0,
+    title           TEXT,
+    other_titles    TEXT NOT NULL DEFAULT '[]',    -- JSON array (multi-role posts)
+    company         TEXT,
+    exp_min         REAL,
+    exp_max         REAL,
+    location        TEXT,
+    work_mode       TEXT,                          -- onsite | hybrid | remote | null
+    employment_type TEXT,                          -- full-time | contract | internship | part-time | null
+    tech_stack      TEXT NOT NULL DEFAULT '[]',    -- JSON array
+    emails          TEXT NOT NULL DEFAULT '[]',    -- JSON array, from the server regex (never the LLM)
+    apply_url       TEXT,                          -- only if it appears in the post text
+    summary         TEXT,
+    score           INTEGER,                       -- 0–100, null if filtered before scoring
+    match_reasons   TEXT NOT NULL DEFAULT '[]',    -- JSON array
+    filter_reasons  TEXT NOT NULL DEFAULT '[]',    -- JSON array
+    provider        TEXT,
+    model           TEXT,
+    extracted_at    INTEGER NOT NULL
+  );
+  CREATE INDEX idx_jobs_score ON jobs(score DESC);
+
+  CREATE TABLE llm_calls (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    at          INTEGER NOT NULL,
+    provider    TEXT NOT NULL,
+    model       TEXT NOT NULL,
+    task        TEXT NOT NULL,                     -- e.g. extract
+    ok          INTEGER NOT NULL,                  -- 0/1
+    latency_ms  INTEGER,
+    error       TEXT,
+    post_id     INTEGER REFERENCES posts(id) ON DELETE SET NULL
+  );
+  CREATE INDEX idx_llm_calls_at ON llm_calls(at DESC);
+  `,
 ];

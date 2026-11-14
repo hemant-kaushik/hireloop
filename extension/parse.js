@@ -51,9 +51,23 @@
   }
 
   function findKey(root) {
-    const ck = root.getAttribute(S.sduiKeyAttr);
-    const m = ck && ck.match(S.sduiKeyPattern);
-    if (m) return { key: `ck:${m[1]}`, dom: "sdui" };
+    const ck = root.getAttribute(S.sduiKeyAttr) || "";
+    // Exact: an inner element carries the bare hash, and the container key is <prefix><hash>FeedType_…
+    if (ck.includes("FeedType_")) {
+      for (const el of root.querySelectorAll(`[${S.sduiKeyAttr}]`)) {
+        const v = el.getAttribute(S.sduiKeyAttr);
+        if (v && v.length >= 16 && /^[A-Za-z0-9_-]+$/.test(v) && ck.includes(`${v}FeedType_`)) return { key: `ck:${v}`, dom: "sdui" };
+      }
+    }
+    for (const pattern of S.sduiKeyPatterns) {
+      const m = ck.match(pattern);
+      if (m) return { key: `ck:${m[1]}`, dom: "sdui" };
+    }
+    // An inner element whose componentkey is the bare post hash
+    for (const el of root.querySelectorAll(`[${S.sduiKeyAttr}]`)) {
+      const v = el.getAttribute(S.sduiKeyAttr);
+      if (S.sduiInnerKeyPattern.test(v)) return { key: `ck:${v}`, dom: "sdui" };
+    }
     for (const a of S.urnAttrs) {
       const u = (root.getAttribute(a) || "").match(S.urnPattern);
       if (u) return { key: u[0], dom: "classic" };
@@ -94,18 +108,35 @@
     return { text: "", quality: "raw", box: null };
   }
 
-  function authorInfo(root) {
+  /** The author link plus its surrounding header, stopping before the element holding the post text. */
+  function authorHeader(root, link, textBox) {
+    let h = link;
+    for (let i = 0; i < 12; i++) {
+      const parent = h.parentElement;
+      if (!parent || parent === root || (textBox && parent.contains(textBox))) break;
+      h = parent;
+    }
+    return h;
+  }
+
+  function authorInfo(root, textBox) {
     const out = { author: null, authorHeadline: null, authorUrl: null, postedLabel: null };
 
     // sdui: the profile/company link that contains <p> lines
     const metaLink = [...root.querySelectorAll(S.authorMetaLink)].find((a) => a.querySelector("p"));
     if (metaLink) {
-      const lines = [...metaLink.querySelectorAll("p")].map(lineText).filter(Boolean);
-      out.author = lines[0] || null;
+      const header = authorHeader(root, metaLink, textBox);
+      const lines = [...header.querySelectorAll("p")]
+        .filter((p) => !p.closest("button") && !(textBox && textBox.contains(p)))
+        .map(lineText)
+        .filter(Boolean);
+      const nameLine = [...metaLink.querySelectorAll("p")].map(lineText).find(Boolean);
+      out.author = nameLine || lines[0] || null;
       const posted = lines.find((l) => S.postedLabelPattern.test(l));
       if (posted) out.postedLabel = posted.match(S.postedLabelPattern)[0];
       out.authorHeadline =
-        lines.slice(1).find((l) => l !== posted && !S.authorLineNoise.test(l) && !S.postedLabelPattern.test(l)) || null;
+        lines.find((l) => l !== out.author && l !== posted && !S.authorLineNoise.test(l) && !S.postedLabelPattern.test(l)) ||
+        null;
       out.authorUrl = metaLink.href || null;
     }
 
@@ -167,7 +198,7 @@
   /** Main entry: one post element → object for /api/ingest (or null if it isn't a usable post). */
   function parsePost(root, loc = globalThis.location) {
     const { key, dom } = findKey(root);
-    const info = authorInfo(root);
+    const info = authorInfo(root, first(root, S.text));
     if (isPromoted(root, info)) return { promoted: true };
 
     const { text, quality, box } = extractText(root);

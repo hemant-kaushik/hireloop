@@ -94,12 +94,12 @@ export function cleanPost(p: IncomingPost): CleanPost | string {
   };
 }
 
-type ExistingRow = { id: number; author: string | null; text: string; raw_text: string; status: string; job_url: string | null };
+type ExistingRow = { id: number; urn: string; author: string | null; text: string; raw_text: string; status: string; job_url: string | null };
 
 const q = {
-  byKey: db.prepare("SELECT id, author, text, raw_text, status, job_url FROM posts WHERE urn = ?"),
+  byKey: db.prepare("SELECT id, urn, author, text, raw_text, status, job_url FROM posts WHERE urn = ?"),
   byHash: db.prepare(
-    "SELECT id, author, text, raw_text, status, job_url FROM posts WHERE text_hash = ? AND text_hash != ? ORDER BY id LIMIT 20",
+    "SELECT id, urn, author, text, raw_text, status, job_url FROM posts WHERE text_hash = ? AND text_hash != ? ORDER BY id LIMIT 20",
   ),
   insert: db.prepare(`
     INSERT INTO posts (urn, text_hash, author, author_headline, author_url, text, raw_text, url, emails,
@@ -107,6 +107,12 @@ const q = {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
   updateText: db.prepare(`
     UPDATE posts SET text = ?, raw_text = ?, text_hash = ?, emails = ?, parse_quality = ?, job_url = COALESCE(job_url, ?)
+    WHERE id = ?`),
+  setKey: db.prepare("UPDATE posts SET urn = ? WHERE id = ?"),
+  // Fill fields an older parser version missed (e.g. headline/time before 005).
+  fillMeta: db.prepare(`
+    UPDATE posts SET author_headline = COALESCE(author_headline, ?), posted_label = COALESCE(posted_label, ?),
+                     author_url = COALESCE(author_url, ?), job_url = COALESCE(job_url, ?)
     WHERE id = ?`),
 };
 
@@ -139,6 +145,7 @@ export function ingestPosts(posts: IncomingPost[]): IngestResult {
           logEvent(existing.id, "ingest_updated", { oldLength: oldBody.length, newLength: body.length });
           r.updated++;
         } else {
+          q.fillMeta.run(p.authorHeadline, p.postedLabel, p.authorUrl, p.jobUrl, existing.id);
           r.seen++;
         }
         continue;
@@ -151,8 +158,13 @@ export function ingestPosts(posts: IncomingPost[]): IngestResult {
       if (sameText.length) {
         const sameAuthor = sameText.find((s) => (s.author ?? "").toLowerCase() === (p.author ?? "").toLowerCase());
         if (sameAuthor) {
-          // Same post, new key (e.g. LinkedIn's key changed between page loads): don't store it twice.
-          logEvent(sameAuthor.id, "ingest_rekey", { key: p.key });
+          // Same post, new key: don't store it twice. If the stored key was only derived from the
+          // text (tx:) and LinkedIn's real key is known now, upgrade it, so later text growth
+          // ("…more") matches by key instead of creating a second row.
+          const upgrade = sameAuthor.urn.startsWith("tx:") && !p.key.startsWith("tx:");
+          if (upgrade) q.setKey.run(p.key, sameAuthor.id);
+          q.fillMeta.run(p.authorHeadline, p.postedLabel, p.authorUrl, p.jobUrl, sameAuthor.id);
+          logEvent(sameAuthor.id, "ingest_rekey", upgrade ? { from: sameAuthor.urn, to: p.key } : { key: p.key });
           r.seen++;
           continue;
         }

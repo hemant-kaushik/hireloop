@@ -29,7 +29,10 @@ After changing any file here, click the reload icon on the extension card, then 
 ## When capture breaks
 1. The popup shows "0 posts found" or a "without text" warning.
 2. On LinkedIn, right-click a post → Inspect. Find the stable hooks: `role`, `data-testid`, `componentkey`, `aria-label`, `href`. **Never use hashed class names** like `c127c4d1`; they change on every LinkedIn deploy.
-3. Update `selectors.js`, add a matching synthetic post to `test/parse.test.html`, and keep that page green.
+3. Or save the page (Ctrl+S → "Webpage, Complete"). Saved pages named `*LinkedIn*.html` are gitignored, because they contain other people's posts. To run the parser on one, remove its `Content-Security-Policy` `<meta>` tag first.
+4. Update `selectors.js`, add a matching synthetic post to `test/parse.test.html`, and keep that page green.
+
+History: November 2026, the post container's `componentkey` prefix changed from `expanded…` to `update-card-focus…`, and the headline and time moved out of the author link (doc 005).
 
 ## Notes
 - LinkedIn's newer layout has no post permalinks in the page, so posts are keyed by the post hash in their `componentkey` (`ck:…`). The UI's "Find post" link searches LinkedIn for the post's opening words instead.

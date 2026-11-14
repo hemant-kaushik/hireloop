@@ -13,3 +13,7 @@ data/
 profile/*
 !profile/*.example.*
 !profile/README.md
+
+# saved LinkedIn pages (contain other people's posts) — used only to fix selectors locally
+*LinkedIn*.html
+*LinkedIn*_files/
